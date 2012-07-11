@@ -1,8 +1,7 @@
 #include <stdio.h>
-#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <netdb.h>
-#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -31,11 +30,12 @@ int main()
 
 	if(connect(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
 	{
-		printf("error to connect to the server");
+		printf("error to connect to the server\n");
 		exit(-2);
 	} 
 
 	handle_write(fd);
+
 }
 
 void handle_write(int fd)

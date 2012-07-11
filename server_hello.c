@@ -1,8 +1,7 @@
-#include <netdb.h>
-#include <stdio.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <netdb.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -51,7 +50,7 @@ int main()
 	{
 		confd = accept(fd, NULL, NULL);
 		handle_read(confd);
-		
+		close(confd);
 	}
 }
 
@@ -66,6 +65,7 @@ void handle_read(int confd)
 		printf("%s\n", buf);
 	}
 }
+
 
 
 
