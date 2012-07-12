@@ -4,30 +4,27 @@
 #include <netdb.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/select.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
 #define SERVER_ADDR "127.0.0.1"
 #define SERVER_PORT 3333
-#define FD_SET_SIZE 24
+#define OPEN_MAX 4096 
 #define MAXLINE 64 
 #define BACKLOG 5
 
 int main()
 {
 	int fd, confd, sockfd, maxfd;
-	int i, n, maxi;
-	int ret;
+	int i, maxi, n, ret;
 	struct sockaddr_in addr;
 	struct sockaddr_in cli_addr;
 	socklen_t cli_addr_len;
-	int client[FD_SET_SIZE];
 	int buf[MAXLINE];
-	fd_set rfd, allset;
-	struct timeval tv;
+	struct pollfd client[OPEN_MAX];
 
 	memset(&addr, 0, sizeof(addr));
 	memset(&cli_addr, 0, sizeof(cli_addr));
@@ -58,28 +55,23 @@ int main()
 	}
 
 
-	for(i = 0; i < FD_SET_SIZE; ++i) {
-		client[i] = -1;
+	for(i = 0; i < OPEN_MAX; ++i) {
+		client[i].fd = -1;
 	}
 
-	maxfd = fd;
-	maxi = -1;
+	maxi = 0;
+	client[0].fd = fd;
+	client[0].events = POLLIN;
 
-	FD_ZERO(&allset);
-	FD_SET(fd, &allset);
 	while(1) {
-		tv.tv_sec = 5;
-		tv.tv_usec = 500;
-		rfd = allset;
-
-		printf("start to select\n");
-		ret = select(maxfd+1, &rfd, NULL, NULL, &tv);
+		printf("start to poll\n");
+		ret = poll(client, maxi+1, 3000);
 		if(ret < 0 && errno == EINTR) {
 			continue;
 		}
 		else if(ret < 0)
 		{
-			printf("error to select the socket \n");
+			printf("error to poll the socket \n");
 			exit(-5);
 		}
 		else if(ret == 0) {
@@ -90,7 +82,7 @@ int main()
 			printf("ret = %d\n", ret);			
 		}
 
-		if(FD_ISSET(fd, &rfd)) {
+		if(client[0].revents & POLLIN) {
 			confd = accept(fd, (struct sockaddr*)&cli_addr, &cli_addr_len);
 			if(confd < 0) {
 				if(errno == EWOULDBLOCK || errno == EINTR) continue;
@@ -98,19 +90,20 @@ int main()
 				exit(-6);
 			}
 
-			for(i = 0; i < FD_SET_SIZE; ++i) {
-				if(client[i] < 0)
+			for(i = 1; i < OPEN_MAX; ++i) {
+				if(client[i].fd < 0)
 				{
-					client[i] = confd;
+					client[i].fd = confd;
 					break;
 				}	
 			}
 
-			if( i == FD_SET_SIZE) {
+			if( i == OPEN_MAX) {
 				printf("too many connections \n");
 				exit(-7);
 			}
-			FD_SET(confd, &allset);
+			
+			client[i].events = POLLIN;
 
 			if(fcntl(confd, F_SETFL, fcntl(confd, F_GETFD, 0) | O_NONBLOCK) == -1)
 			{
@@ -120,17 +113,15 @@ int main()
 	
 
 			if(i > maxi) maxi = i;
-			if(confd > maxfd ) maxfd = confd;
-
 			if(--ret <= 0) {
 				continue;
 			}
 		}	
 
-		for(i = 0; i <= maxi; i++) {
-			if( (sockfd = client[i]) < 0) continue;
+		for(i = 1; i <= maxi; i++) {
+			if( (sockfd = client[i].fd) < 0) continue;
 
-			if(FD_ISSET(sockfd, &rfd)) 
+			if(client[i].revents & (POLLIN | POLLERR))
 			{
 			again:
 				while( (n = read(sockfd, buf, MAXLINE)) > 0) {
@@ -143,8 +134,7 @@ int main()
 				if(n == 0) {
 					printf("client close the connection\n");
 					close(sockfd);
-					FD_CLR(sockfd, &allset);
-					client[i] = -1;
+					client[i].fd = -1;
 				}
 				else if(n < 0 && errno == EINTR) {
 					printf("read interuppted \n");
