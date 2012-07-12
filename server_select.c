@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <netdb.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/select.h>
@@ -40,15 +41,20 @@ int main()
 		exit(-1);
 	} 
 
-
+	if(fcntl(fd, F_SETFL, fcntl(fd, F_GETFD, 0) | O_NONBLOCK) == -1)
+	{
+		printf("error to set the listen fd to nonblock\n");
+		exit(-2);
+	}
+	
 	if(bind(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
 		printf("error to bind the socket\n");
-		exit(-2);
+		exit(-3);
 	}
 	
 	if(listen(fd, BACKLOG) == -1) {
 		printf("error to listen the socket\n");
-		exit(-3);
+		exit(-4);
 	}
 
 
@@ -70,7 +76,7 @@ int main()
 		ret = select(maxfd+1, &rfd, NULL, NULL, &tv);
 		if(ret < 0) {
 			printf("error to select the socket \n");
-			exit(-4);
+			exit(-5);
 		}
 		else if(ret == 0) {
 			printf("time expire\n");
@@ -83,8 +89,9 @@ int main()
 		if(FD_ISSET(fd, &rfd)) {
 			confd = accept(fd, (struct sockaddr*)&cli_addr, &cli_addr_len);
 			if(confd < 0) {
+				if(errno == EWOULDBLOCK || errno == EINTR) continue;
 				printf("error to accept the socket\n");
-				continue;
+				exit(-6);
 			}
 
 			for(i = 0; i < FD_SET_SIZE; ++i) {
@@ -97,9 +104,16 @@ int main()
 
 			if( i == FD_SET_SIZE) {
 				printf("too many connections \n");
-				exit(-5);
+				exit(-7);
 			}
 			FD_SET(confd, &allset);
+
+			if(fcntl(confd, F_SETFL, fcntl(confd, F_GETFD, 0) | O_NONBLOCK) == -1)
+			{
+				printf("error to set the confd to nonblock\n");
+				exit(-8);
+			}
+	
 
 			if(i > maxi) maxi = i;
 			if(confd > maxfd ) maxfd = confd;
@@ -132,9 +146,12 @@ int main()
 					printf("read interuppted \n");
 					goto again;
 				}
-				else if(n < 0) {
+				else if(n < 0 && errno == EWOULDBLOCK) {
+				}
+				else
+				{
 					printf("connection error\n");
-					exit(-6);
+					exit(-9);
 				}
 
 				if(--ret <= 0) break;
