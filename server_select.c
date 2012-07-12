@@ -74,7 +74,11 @@ int main()
 
 		printf("start to select\n");
 		ret = select(maxfd+1, &rfd, NULL, NULL, &tv);
-		if(ret < 0) {
+		if(ret < 0 && errno == EINTR) {
+			continue;
+		}
+		else if(ret < 0)
+		{
 			printf("error to select the socket \n");
 			exit(-5);
 		}
